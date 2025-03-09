@@ -1,0 +1,36 @@
+{
+    "name": "fan-control-app",
+    "version": "1.0.0",
+    "description": "An application to control fans under heaters",
+    "main": "src/index.ts",
+    "type": "module",
+    "scripts": {
+        "start": "bun run src/index.ts",
+        "dev": "bun --watch run src/index.ts",
+        "build": "bun build src/index.ts --outdir dist",
+        "test": "bun test",
+        "generate-certs": "mkdir -p certs && openssl req -x509 -newkey rsa:4096 -keyout certs/key.pem -out certs/cert.pem -days 365 -nodes -subj '/CN=localhost'"
+    },
+    "keywords": [
+        "fan-control",
+        "iot",
+        "heater"
+    ],
+    "author": "",
+    "license": "MIT",
+    "dependencies": {
+        "drizzle-orm": "^0.29.1",
+        "postgres": "^3.4.3",
+        "hono": "^3.11.10",
+        "dotenv": "^16.3.1",
+        "pino": "^8.16.2",
+        "pino-pretty": "^10.2.3",
+        "zod": "^3.22.4"
+    },
+    "devDependencies": {
+        "bun-types": "latest",
+        "drizzle-kit": "^0.20.6",
+        "typescript": "^5.3.3",
+        "@types/node": "^20.10.4"
+    }
+}
