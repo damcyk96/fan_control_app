@@ -1,7 +1,7 @@
 import { Context } from "hono";
-import { logger } from "../utils/logger";
-import { db } from "../db";
-import { fans, Fan, NewFan, fanHistory } from "../db/schema";
+import { logger } from "../shared/utils/logger";
+import { db } from "../db/db";
+import { fans, Fan, NewFan, fanHistory } from "./;
 import { eq } from "drizzle-orm";
 
 export const fanController = {

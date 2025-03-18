@@ -1,8 +1,8 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
-import { logger } from "../utils/logger";
 import { migrateDatabase } from "./migrate"; // Import the migration function
+import { logger } from "../../../shared/utils/logger";
 
 // Get database connection string from environment variables
 const connectionString =
@@ -17,7 +17,6 @@ const client = postgres(connectionString, {
   onparameter: (param) => logger.debug(param),
 });
 
-// Initialize Drizzle with the PostgreSQL client
 export const db = drizzle(client, { schema });
 
 // Function to initialize database with retries

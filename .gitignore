@@ -28,9 +28,7 @@ yarn-error.log*
 # Bun
 bun.lockb
 
-# SSL Certificates (in production, these should be handled by a secure vault)
-# For development, we keep them but in production you should not commit these
-# certs/
+
 
 # OS specific
 .DS_Store

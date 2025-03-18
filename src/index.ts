@@ -1,112 +1,125 @@
-import { Hono } from "hono";
-import { logger, logRequestStart, logRequestComplete } from "./utils/logger";
-import { initializeDatabase } from "./db";
-import fanRouter from "./routes/fanRoutes";
+// src/index.ts
 import { serve } from "bun";
-import { readFileSync } from "fs";
-import { join } from "path";
+import { logger } from "./shared/utils/logger";
+import { createConnection } from "./shared/db/connection";
+import { getFanManagement } from "./features/fan-management/FanManagement";
+import { FanApi } from "./features/fan-management/api";
 import dotenv from "dotenv";
+import { z } from "zod";
 
-// Load environment variables
-dotenv.config();
-
-// Create Hono app
-const app = new Hono();
-
-// Middleware to log requests
-app.use("*", async (c, next) => {
-  const start = performance.now();
-  logRequestStart(c.req);
-
-  await next();
-
-  const end = performance.now();
-  logRequestComplete(c.req, c.res, end - start);
+// Environment validation schema
+const EnvSchema = z.object({
+  PORT: z
+    .string()
+    .transform((val) => parseInt(val, 10))
+    .default("3000"),
+  DATABASE_URL: z.string(),
 });
 
-// Health check endpoint
-app.get("/health", (c) => {
-  return c.json({ status: "ok", timestamp: new Date().toISOString() });
-});
+type EnvConfig = z.infer<typeof EnvSchema>;
 
-// API routes
-app.route("/api/fans", fanRouter);
+export async function initializeServer(env: Record<string, string>) {
+  // Validate environment configuration
+  const validatedConfig = EnvSchema.safeParse(env);
 
-// Error handling
-app.onError((err, c) => {
-  logger.error({ error: err }, "Unhandled error");
-  return c.json({ success: false, error: "Internal server error" }, 500);
-});
+  if (!validatedConfig.success) {
+    throw new Error(
+      `Invalid environment configuration: ${validatedConfig.error}`
+    );
+  }
 
-// 404 handler
-app.notFound((c) => {
-  return c.json({ success: false, error: "Endpoint not found" }, 404);
-});
+  const config = validatedConfig.data;
 
-// Initialize server
-const PORT = parseInt(process.env.PORT || "3000", 10);
-
-async function startServer() {
   try {
     // Initialize database connection
-    const dbInitialized = await initializeDatabase();
+    const db = await createConnection(config.DATABASE_URL);
 
-    if (!dbInitialized) {
-      logger.error("Failed to initialize database. Exiting...");
-      process.exit(1);
-    }
+    // Initialize fan management
+    const fanManagement = await getFanManagement(db);
 
-    // Check if HTTPS is enabled
-    const useHttps = process.env.USE_HTTPS === "true";
+    // Initialize API with fan management instance
+    const fanApi = new FanApi(fanManagement);
 
-    if (useHttps) {
-      try {
-        // Load SSL certificates
-        const certPath = join(process.cwd(), "certs", "cert.pem");
-        const keyPath = join(process.cwd(), "certs", "key.pem");
+    return { config, db, fanApi };
+  } catch (error) {
+    logger.error({ error }, "Failed to initialize server");
+    throw error;
+  }
+}
 
-        const cert = readFileSync(certPath);
-        const key = readFileSync(keyPath);
+export async function startServer(configPath?: string) {
+  try {
+    // Load environment variables
+    const env = configPath
+      ? dotenv.config({ path: configPath }).parsed || {}
+      : process.env;
 
-        // Start HTTPS server
-        const server = serve({
-          fetch: app.fetch,
-          port: PORT,
-          tls: {
-            cert,
-            key,
-          },
-        });
+    // Initialize server components
+    const { config, fanApi } = await initializeServer(env);
 
-        logger.info(`HTTPS server started on https://localhost:${PORT}`);
-      } catch (error) {
-        logger.error(
-          { error },
-          "Failed to load SSL certificates, falling back to HTTP"
+    // Start server
+    serve({
+      port: config.PORT,
+      // Routes configuration
+      routes: {
+        // Health check
+        "/health": () =>
+          Response.json({
+            status: "ok",
+            timestamp: new Date().toISOString(),
+          }),
+
+        // Fan management routes
+        "/api/fans": {
+          GET: (req) => fanApi.getAllFans(req),
+          POST: (req) => fanApi.createFan(req),
+        },
+
+        "/api/fans/:id": {
+          GET: (req) => fanApi.getFanById(req, req.params.id),
+          PUT: (req) => fanApi.updateFan(req, req.params.id),
+          DELETE: (req) => fanApi.deleteFan(req, req.params.id),
+        },
+
+        "/api/fans/:id/toggle": {
+          POST: (req) => fanApi.toggleFanState(req, req.params.id),
+        },
+
+        "/api/fans/:id/speed": {
+          POST: (req) => fanApi.setFanSpeed(req, req.params.id),
+        },
+
+        // Catch-all for unmatched API routes
+        "/api/*": () =>
+          Response.json(
+            { success: false, error: "Endpoint not found" },
+            { status: 404 }
+          ),
+      },
+
+      // Error handling
+      error(error) {
+        logger.error({ error }, "Server error");
+        return Response.json(
+          { success: false, error: "Internal server error" },
+          { status: 500 }
         );
+      },
+    });
 
-        // Fall back to HTTP
-        const server = serve({
-          fetch: app.fetch,
-          port: PORT,
-        });
-
-        logger.info(`HTTP server started on http://localhost:${PORT}`);
-      }
-    } else {
-      // Start HTTP server
-      const server = serve({
-        fetch: app.fetch,
-        port: PORT,
-      });
-
-      logger.info(`HTTP server started on http://localhost:${PORT}`);
-    }
+    logger.info(`Server started on http://localhost:${config.PORT}`);
   } catch (error) {
     logger.error({ error }, "Failed to start server");
     process.exit(1);
   }
 }
 
-// Start the server
-startServer();
+// For testing
+export async function createTestServer(testEnv: Record<string, string>) {
+  return await initializeServer(testEnv);
+}
+
+// Start the server only if this file is run directly
+if (require.main === module) {
+  startServer();
+}

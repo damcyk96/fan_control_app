@@ -9,7 +9,6 @@ services:
       - "3000:3000"
     volumes:
       - ./src:/app/src
-      - ./certs:/app/certs
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgres://postgres:postgres@db:5432/fan_control
